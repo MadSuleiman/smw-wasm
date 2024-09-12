@@ -1,11 +1,11 @@
-TARGET_EXEC:=smw
+TARGET_EXEC:=smw.html
 
 SRCS:=$(wildcard smb1/*.c smbll/*.c src/*.c src/snes/*.c) third_party/gl_core/gl_core_3_1.c
 OBJS:=$(SRCS:%.c=%.o)
 
 PYTHON:=/usr/bin/env python3
 CFLAGS:=$(if $(CFLAGS),$(CFLAGS),-O2 -fno-strict-aliasing -Werror )
-CFLAGS:=${CFLAGS} $(shell sdl2-config --cflags) -DSYSTEM_VOLUME_MIXER_AVAILABLE=0 -I.
+CFLAGS:=${CFLAGS} -DSYSTEM_VOLUME_MIXER_AVAILABLE=0 -I. -sUSE_SDL=2
 
 ifeq (${OS},Windows_NT)
     WINDRES:=windres
@@ -17,9 +17,9 @@ endif
 
 .PHONY: all clean clean_obj
 
-all: $(TARGET_EXEC) smw_assets.dat
+all: smw_assets.dat $(TARGET_EXEC)
 $(TARGET_EXEC): $(OBJS) $(RES)
-	$(CC) $^ -o $@ $(LDFLAGS) $(SDLFLAGS)
+	$(CC) $^ -o $@ $(LDFLAGS) $(SDLFLAGS) -sALLOW_MEMORY_GROWTH=1 -sWASM=1 -sINVOKE_RUN=0 -sENVIRONMENT=web -sEXPORTED_RUNTIME_METHODS="['FS','ccall','cwrap']" -sFILESYSTEM=1 -sFORCE_FILESYSTEM=1 -lidbfs.js --embed-file smw.ini --embed-file smw_assets.dat --shell-file shell.html
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $< -o $@

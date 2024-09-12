@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Super Mario World</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        scrollbar-width: none;
+      }
+
+      body {
+        font-family: arial;
+      }
+
+      .emscripten {
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        border: 0;
+        background-color: black;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      class="emscripten"
+      id="canvas"
+      oncontextmenu="event.preventDefault()"
+      tabindex="-1"
+    ></canvas>
+
+    <script type="text/javascript">
+      var Module = {
+        preRun: [
+          async function () {
+            console.log('preRun hook: look for rom in IndexedDB filesystem');
+            // Mount '/persist-smw' directory in browser's persistent IndexedDB
+            FS.mkdir('/persist-smw');
+            FS.mount(IDBFS, { autoPersist: true }, '/persist-smw');
+            FS.syncfs(true, function (err) {
+              if (err) {
+                console.error(err);
+                alert("Failed to mount '/persist-smw' filesystem");
+              } else {
+                this.callMain();
+              }
+            });
+          }
+        ],
+        canvas: (() => {
+          var canvas = document.getElementById('canvas');
+
+          // As a default initial behavior, pop up an alert when webgl context is lost. To make your
+          // application robust, you may want to override this behavior before shipping!
+          // See http://www.khronos.org/registry/webgl/specs/latest/1.0/#5.15.2
+          canvas.addEventListener(
+            'webglcontextlost',
+            (e) => {
+              alert('WebGL context lost. You will need to reload the page.');
+              e.preventDefault();
+            },
+            false
+          );
+
+          return canvas;
+        })(),
+        totalDependencies: 0,
+        monitorRunDependencies: (left) => {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+        }
+      };
+    </script>
+    {{{ SCRIPT }}}
+  </body>
+</html>
