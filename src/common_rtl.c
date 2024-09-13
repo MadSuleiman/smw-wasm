@@ -483,7 +483,7 @@ void SmwLoadNextPlaybackSnapshot() {
   char name[128];
   for (int i = 0; i < 100; i++) {
     g_playback_ctr++;
-    sprintf(name, "saves/playthrough/%d_%d.sav", g_playback_ctr >> 1, (g_playback_ctr & 1) + 1);
+    sprintf(name, "persist-smw/playthrough/%d_%d.sav", g_playback_ctr >> 1, (g_playback_ctr & 1) + 1);
     FILE *f = fopen(name, "rb");
     if (f) {
       printf("Playthrough %s\n", name);
@@ -505,12 +505,12 @@ void RtlSaveLoad(int cmd, int slot) {
     int i = slot - 256;
     if (cmd == kSaveLoad_Save || i >= sizeof(kBugSaves) / sizeof(kBugSaves[0]))
       return;
-    sprintf(name, "saves/%s.sav", kBugSaves[i]);
+    sprintf(name, "persist-smw/%s.sav", kBugSaves[i]);
   } else {
     if (game_id == kGameID_SMW)
-      sprintf(name, "saves/save%d.sav", slot);
+      sprintf(name, "persist-smw/save%d.sav", slot);
     else
-      sprintf(name, "saves/%s_save%d.sav", g_rtl_game_info->title, slot);
+      sprintf(name, "persist-smw/%s_save%d.sav", g_rtl_game_info->title, slot);
   }
   printf("*** %s slot %d: %s\n",
     cmd == kSaveLoad_Save ? "Saving" : cmd == kSaveLoad_Load ? "Loading" : "Replaying", slot, name);
@@ -791,7 +791,7 @@ void RtlCheat(char c) {
 
 void RtlReadSram(void) {
   char filename[64];
-  snprintf(filename, sizeof(filename), "saves/%s.srm", g_rtl_game_info->title);
+  snprintf(filename, sizeof(filename), "persist-smw/%s.srm", g_rtl_game_info->title);
   FILE *f = fopen(filename, "rb");
   if (f) {
     if (fread(g_sram, 1, g_sram_size, f) != g_sram_size)
@@ -804,8 +804,8 @@ void RtlReadSram(void) {
 
 void RtlWriteSram(void) {
   char filename[64], filename_bak[64];
-  snprintf(filename, sizeof(filename), "saves/%s.srm", g_rtl_game_info->title);
-  snprintf(filename_bak, sizeof(filename_bak), "saves/%s.srm.bak", g_rtl_game_info->title);
+  snprintf(filename, sizeof(filename), "persist-smw/%s.srm", g_rtl_game_info->title);
+  snprintf(filename_bak, sizeof(filename_bak), "persist-smw/%s.srm.bak", g_rtl_game_info->title);
   rename(filename, filename_bak);
   FILE *f = fopen(filename, "wb");
   if (f) {
