@@ -6,27 +6,16 @@ OBJS:=$(SRCS:%.c=%.o)
 PYTHON:=/usr/bin/env python3
 CFLAGS:=$(if $(CFLAGS),$(CFLAGS),-O2 -fno-strict-aliasing -Werror )
 CFLAGS:=${CFLAGS} -DSYSTEM_VOLUME_MIXER_AVAILABLE=0 -I. -sUSE_SDL=2
-
-ifeq (${OS},Windows_NT)
-    WINDRES:=windres
-#    RES:=sm.res
-    SDLFLAGS:=-Wl,-Bstatic $(shell sdl2-config --static-libs)
-else
-    SDLFLAGS:=$(shell sdl2-config --libs) -lm
-endif
+SDLFLAGS:=$(shell sdl2-config --libs) -lm
 
 .PHONY: all clean clean_obj
 
 all: smw_assets.dat $(TARGET_EXEC)
 $(TARGET_EXEC): $(OBJS) $(RES)
-	$(CC) $^ -o $@ $(LDFLAGS) $(SDLFLAGS) -sALLOW_MEMORY_GROWTH=1 -sWASM=1 -sINVOKE_RUN=0 -sENVIRONMENT=web -sEXPORTED_RUNTIME_METHODS="['FS','ccall','cwrap']" -sFILESYSTEM=1 -sFORCE_FILESYSTEM=1 -lidbfs.js --embed-file smw.ini --embed-file smw_assets.dat --shell-file shell.html
+	emcc $^ -o $@ $(LDFLAGS) $(SDLFLAGS) -sALLOW_MEMORY_GROWTH=1 -sWASM=1 -sINVOKE_RUN=0 -sENVIRONMENT=web -sEXPORTED_RUNTIME_METHODS="['FS','ccall','cwrap']" -sFILESYSTEM=1 -sFORCE_FILESYSTEM=1 -lidbfs.js --embed-file smw.ini --embed-file smw_assets.dat --shell-file shell.html
 
 %.o : %.c
-	$(CC) -c $(CFLAGS) $< -o $@
-
-#$(RES): src/platform/win32/smw.rc
-#	@echo "Generating Windows resources"
-#	@$(WINDRES) $< -O coff -o $@
+	emcc -c $(CFLAGS) $< -o $@
 
 smw_assets.dat:
 	@echo "Extracting game resources"
