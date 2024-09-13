@@ -1,12 +1,13 @@
+#include <SDL.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <SDL.h>
 #ifdef _WIN32
-#include "platform/win32/volume_control.h"
 #include <direct.h>
+
+#include "platform/win32/volume_control.h"
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -14,22 +15,23 @@
 #endif
 
 #include "assets/smw_assets.h"
-
-#include "snes/ppu.h"
-
-#include "types.h"
-#include "smw_rtl.h"
 #include "common_cpu_infra.h"
 #include "config.h"
-#include "util.h"
+#include "smw_rtl.h"
 #include "smw_spc_player.h"
-
+#include "snes/ppu.h"
 #include "snes/snes.h"
+#include "types.h"
+#include "util.h"
 #ifdef __SWITCH__
 #include "switch_impl.h"
 #endif
 
 #include "assets/smw_assets.h"
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 typedef struct GamepadInfo {
   uint32 modifiers;
@@ -39,7 +41,6 @@ typedef struct GamepadInfo {
   uint16 last_cmd[kGamepadBtn_Count];
   Sint16 last_axis_x, last_axis_y;
 } GamepadInfo;
-
 
 static void SDLCALL AudioCallback(void *userdata, Uint8 *stream, int len);
 static void LoadAssets();
@@ -104,15 +105,16 @@ void Warning(const char *error) {
 }
 
 static GamepadInfo *GetGamepadInfo(SDL_JoystickID id) {
-  return (g_gamepad[0].joystick_id == id) ? &g_gamepad[0] :
-    (g_gamepad[1].joystick_id == id) ? &g_gamepad[1] : NULL;
+  return (g_gamepad[0].joystick_id == id) ? &g_gamepad[0] : (g_gamepad[1].joystick_id == id) ? &g_gamepad[1] : NULL;
 }
 
 void ChangeWindowScale(int scale_step) {
-  if ((SDL_GetWindowFlags(g_window) & (SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED)) != 0)
+  if ((SDL_GetWindowFlags(g_window) &
+       (SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED)) != 0)
     return;
   int screen = SDL_GetWindowDisplayIndex(g_window);
-  if (screen < 0) screen = 0;
+  if (screen < 0)
+    screen = 0;
   int max_scale = kMaxWindowScale;
   SDL_Rect bounds;
   int bt = -1, bl, bb, br;
@@ -134,7 +136,7 @@ void ChangeWindowScale(int scale_step) {
   int w = new_scale * g_snes_width;
   int h = new_scale * g_snes_height;
 
-  //SDL_RenderSetLogicalSize(g_renderer, w, h);
+  // SDL_RenderSetLogicalSize(g_renderer, w, h);
   SDL_SetWindowSize(g_window, w, h);
   if (bt >= 0) {
     // Center the window on top of the mouse
@@ -161,11 +163,13 @@ static SDL_HitTestResult HitTestCallback(SDL_Window *win, const SDL_Point *pt, v
   SDL_GetWindowSize(win, &w, &h);
 
   if (pt->y < RESIZE_BORDER) {
-    return (pt->x < RESIZE_BORDER) ? SDL_HITTEST_RESIZE_TOPLEFT :
-      (pt->x >= w - RESIZE_BORDER) ? SDL_HITTEST_RESIZE_TOPRIGHT : SDL_HITTEST_RESIZE_TOP;
+    return (pt->x < RESIZE_BORDER)        ? SDL_HITTEST_RESIZE_TOPLEFT
+           : (pt->x >= w - RESIZE_BORDER) ? SDL_HITTEST_RESIZE_TOPRIGHT
+                                          : SDL_HITTEST_RESIZE_TOP;
   } else if (pt->y >= h - RESIZE_BORDER) {
-    return (pt->x < RESIZE_BORDER) ? SDL_HITTEST_RESIZE_BOTTOMLEFT :
-      (pt->x >= w - RESIZE_BORDER) ? SDL_HITTEST_RESIZE_BOTTOMRIGHT : SDL_HITTEST_RESIZE_BOTTOM;
+    return (pt->x < RESIZE_BORDER)        ? SDL_HITTEST_RESIZE_BOTTOMLEFT
+           : (pt->x >= w - RESIZE_BORDER) ? SDL_HITTEST_RESIZE_BOTTOMRIGHT
+                                          : SDL_HITTEST_RESIZE_BOTTOM;
   } else {
     if (pt->x < RESIZE_BORDER) {
       return SDL_HITTEST_RESIZE_LEFT;
@@ -178,7 +182,7 @@ static SDL_HitTestResult HitTestCallback(SDL_Window *win, const SDL_Point *pt, v
 
 void RtlDrawPpuFrame(uint8 *pixel_buffer, size_t pitch, uint32 render_flags) {
   g_rtl_game_info->draw_ppu_frame();
-  
+
   uint8 *ppu_pixels = g_other_image ? g_my_pixels : g_pixels;
   for (size_t y = 0, y_end = g_snes_height; y < y_end; y++)
     memcpy((uint8 *)pixel_buffer + y * pitch, ppu_pixels + y * 256 * 4, 256 * 4);
@@ -189,9 +193,7 @@ static void DrawPpuFrameWithPerf(void) {
   uint8 *pixel_buffer = 0;
   int pitch = 0;
 
-  g_renderer_funcs.BeginDraw(g_snes_width * render_scale,
-                             g_snes_height * render_scale,
-                             &pixel_buffer, &pitch);
+  g_renderer_funcs.BeginDraw(g_snes_width * render_scale, g_snes_height * render_scale, &pixel_buffer, &pitch);
   if (g_display_perf || g_config.display_perf_title) {
     static float history[64], average;
     static int history_pos;
@@ -230,7 +232,8 @@ void RtlApuUnlock(void) {
 }
 
 static void SDLCALL AudioCallback(void *userdata, Uint8 *stream, int len) {
-  if (SDL_LockMutex(g_audio_mutex)) Die("Mutex lock failed!");
+  if (SDL_LockMutex(g_audio_mutex))
+    Die("Mutex lock failed!");
   while (len != 0) {
     if (g_audiobuffer_end - g_audiobuffer_cur == 0) {
       RtlRenderAudio((int16 *)g_audiobuffer, g_frames_per_block, g_audio_channels);
@@ -251,7 +254,6 @@ static void SDLCALL AudioCallback(void *userdata, Uint8 *stream, int len) {
   SDL_UnlockMutex(g_audio_mutex);
 }
 
-
 // State for sdl renderer
 static SDL_Renderer *g_renderer;
 static SDL_Texture *g_texture;
@@ -261,9 +263,9 @@ static bool SdlRenderer_Init(SDL_Window *window) {
   if (g_config.shader)
     fprintf(stderr, "Warning: Shaders are supported only with the OpenGL backend\n");
 
-  SDL_Renderer *renderer = SDL_CreateRenderer(g_window, -1,
-                                              g_config.output_method == kOutputMethod_SDLSoftware ? SDL_RENDERER_SOFTWARE :
-                                              SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  SDL_Renderer *renderer = SDL_CreateRenderer(
+      g_window, -1,
+      g_config.output_method == kOutputMethod_SDLSoftware ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (renderer == NULL) {
     printf("Failed to create renderer: %s\n", SDL_GetError());
     return false;
@@ -283,8 +285,8 @@ static bool SdlRenderer_Init(SDL_Window *window) {
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
 
   int tex_mult = 1;
-  g_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-                                g_snes_width * tex_mult, g_snes_height * tex_mult);
+  g_texture =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, g_snes_width * tex_mult, g_snes_height * tex_mult);
   if (g_texture == NULL) {
     printf("Failed to create texture: %s\n", SDL_GetError());
     return false;
@@ -314,16 +316,15 @@ static void SdlRenderer_EndDraw(void) {
   //  printf("%f ms\n", v * 1000);
   SDL_RenderClear(g_renderer);
   SDL_RenderCopy(g_renderer, g_texture, &g_sdl_renderer_rect, NULL);
-  SDL_RenderPresent(g_renderer); // vsyncs to 60 FPS?
+  SDL_RenderPresent(g_renderer);  // vsyncs to 60 FPS?
 }
 
 static const struct RendererFuncs kSdlRendererFuncs = {
-  &SdlRenderer_Init,
-  &SdlRenderer_Destroy,
-  &SdlRenderer_BeginDraw,
-  &SdlRenderer_EndDraw,
+    &SdlRenderer_Init,
+    &SdlRenderer_Destroy,
+    &SdlRenderer_BeginDraw,
+    &SdlRenderer_EndDraw,
 };
-
 
 void MkDir(const char *s) {
 #if defined(_WIN32)
@@ -333,8 +334,142 @@ void MkDir(const char *s) {
 #endif
 }
 
+bool running;
+uint32 lastTick;
+uint32 curTick;
+uint32 frameCtr;
+uint8 audiopaused;
+bool has_bug_in_title;
+GamepadInfo *gi;
+SDL_Event event;
+
+static void cleanup() {
+  if (g_config.autosave)
+    HandleCommand(kKeys_Save + 0, true);
+
+  // clean sdl
+  SDL_PauseAudioDevice(g_audio_device, 1);
+  SDL_CloseAudioDevice(g_audio_device);
+  SDL_DestroyMutex(g_audio_mutex);
+  free(g_audiobuffer);
+
+  g_renderer_funcs.Destroy();
+
+#ifdef __SWITCH__
+  SwitchImpl_Exit();
+#endif
+
+  SDL_DestroyWindow(g_window);
+  SDL_Quit();
+
+  emscripten_cancel_main_loop();
+}
+
+static void main_loop() {
+  while (SDL_PollEvent(&event)) {
+    switch (event.type) {
+    case SDL_CONTROLLERDEVICEADDED: OpenOneGamepad(event.cdevice.which); break;
+    case SDL_CONTROLLERDEVICEREMOVED:
+      gi = GetGamepadInfo(event.cdevice.which);
+      if (gi) {
+        memset(gi, 0, sizeof(GamepadInfo));
+        gi->joystick_id = -1;
+      }
+      break;
+    case SDL_CONTROLLERAXISMOTION:
+      gi = GetGamepadInfo(event.caxis.which);
+      if (gi)
+        HandleGamepadAxisInput(gi, event.caxis.axis, event.caxis.value);
+      break;
+    case SDL_CONTROLLERBUTTONDOWN:
+    case SDL_CONTROLLERBUTTONUP: {
+      gi = GetGamepadInfo(event.cbutton.which);
+      if (gi) {
+        int b = RemapSdlButton(event.cbutton.button);
+        if (b >= 0)
+          HandleGamepadInput(gi, b, event.type == SDL_CONTROLLERBUTTONDOWN);
+      }
+      break;
+    }
+    case SDL_MOUSEWHEEL:
+      if (SDL_GetModState() & KMOD_CTRL && event.wheel.y != 0)
+        ChangeWindowScale(event.wheel.y > 0 ? 1 : -1);
+      break;
+    case SDL_MOUSEBUTTONDOWN:
+      if (event.button.button == SDL_BUTTON_LEFT && event.button.state == SDL_PRESSED && event.button.clicks == 2) {
+        if ((g_win_flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0 && (g_win_flags & SDL_WINDOW_FULLSCREEN) == 0 &&
+            SDL_GetModState() & KMOD_SHIFT) {
+          g_win_flags ^= SDL_WINDOW_BORDERLESS;
+          SDL_SetWindowBordered(g_window, (g_win_flags & SDL_WINDOW_BORDERLESS) == 0 ? SDL_TRUE : SDL_FALSE);
+        }
+      }
+      break;
+    case SDL_KEYDOWN: HandleInput(event.key.keysym.sym, event.key.keysym.mod, true); break;
+    case SDL_KEYUP: HandleInput(event.key.keysym.sym, event.key.keysym.mod, false); break;
+    case SDL_QUIT: running = false; break;
+    }
+  }
+
+  if (g_paused != audiopaused) {
+    audiopaused = g_paused;
+    if (g_audio_device)
+      SDL_PauseAudioDevice(g_audio_device, audiopaused);
+  }
+
+  if (g_paused) {
+    SDL_Delay(16);
+    return;
+  }
+
+  // Clear gamepad inputs when joypad directional inputs to avoid wonkiness
+  if (g_input_state & 0xf0)
+    g_gamepad[0].axis_buttons = 0;
+  if (g_input_state & 0xf0000)
+    g_gamepad[1].axis_buttons = 0;
+  uint32 inputs = g_input_state | g_gamepad[0].axis_buttons | g_gamepad[1].axis_buttons << 12;
+  uint8 is_replay = RtlRunFrame(inputs | GetActiveControllers());
+
+  frameCtr++;
+  g_snes->disableRender = (g_turbo ^ (is_replay & g_replay_turbo)) && (frameCtr & (g_turbo ? 0xf : 0x7f)) != 0;
+
+  if (!g_snes->disableRender)
+    DrawPpuFrameWithPerf();
+
+  bool want_bug_in_title = (g_got_mismatch_count != 0);
+  if (want_bug_in_title != has_bug_in_title) {
+    has_bug_in_title = want_bug_in_title;
+    char title[60];
+    if (want_bug_in_title) {
+      snprintf(title, sizeof(title), "%s | BUG FOUND!", kWindowTitle);
+      SDL_SetWindowTitle(g_window, title);
+    } else {
+      SDL_SetWindowTitle(g_window, kWindowTitle);
+    }
+  }
+
+  // if vsync isn't working, delay manually
+  curTick = SDL_GetTicks();
+
+  if (!g_snes->disableRender && !g_config.disable_frame_delay) {
+    static const uint8 delays[3] = {17, 17, 16};  // 60 fps
+    lastTick += delays[frameCtr % 3];
+
+    if (lastTick > curTick) {
+      uint32 delta = lastTick - curTick;
+      if (delta > 500) {
+        lastTick = curTick - 500;
+        delta = 500;
+      }
+      //        printf("Sleeping %d\n", delta);
+      SDL_Delay(delta);
+    } else if (curTick - lastTick > 500) {
+      lastTick = curTick;
+    }
+  }
+}
+
 #undef main
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
 #ifdef __SWITCH__
   SwitchImpl_Init();
 #endif
@@ -356,11 +491,9 @@ int main(int argc, char** argv) {
 
   g_gamepad[0].joystick_id = g_gamepad[1].joystick_id = -1;
   g_snes_width = (g_config.extended_aspect_ratio * 2 + 256);
-  g_snes_height = 224;// (g_config.extend_y ? 240 : 224);
-  g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer |
-    //    g_config.enhanced_mode7 * kPpuRenderFlags_4x4Mode7 |
-    g_config.extend_y * kPpuRenderFlags_Height240 |
-    g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
+  g_snes_height = 224;  // (g_config.extend_y ? 240 : 224);
+  g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer | g_config.extend_y * kPpuRenderFlags_Height240 |
+                       g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
 
   if (g_config.fullscreen == 1)
     g_win_flags ^= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -385,7 +518,7 @@ int main(int argc, char** argv) {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
   // set up SDL
-  if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
     printf("Failed to init SDL: %s\n", SDL_GetError());
     return 1;
   }
@@ -422,8 +555,9 @@ error_reading:;
     return 1;
   }
 
-  SDL_Window *window = SDL_CreateWindow(kWindowTitle, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, g_win_flags);
-  if(window == NULL) {
+  SDL_Window *window =
+      SDL_CreateWindow(kWindowTitle, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, window_width, window_height, g_win_flags);
+  if (window == NULL) {
     printf("Failed to create window: %s\n", SDL_GetError());
     return 1;
   }
@@ -434,10 +568,10 @@ error_reading:;
     return 1;
 
   g_audio_mutex = SDL_CreateMutex();
-  if (!g_audio_mutex) Die("No mutex");
+  if (!g_audio_mutex)
+    Die("No mutex");
 
-  if (g_rtl_game_info->game_id == kGameID_SMB1 ||
-      g_rtl_game_info->game_id == kGameID_SMBLL)
+  if (g_rtl_game_info->game_id == kGameID_SMB1 || g_rtl_game_info->game_id == kGameID_SMBLL)
     g_spc_player = SmasSpcPlayer_Create();
   else if (g_rtl_game_info->game_id == kGameID_SMW)
     g_spc_player = SmwSpcPlayer_Create();
@@ -446,7 +580,7 @@ error_reading:;
 
   bool enable_audio = true;
   if (enable_audio) {
-    SDL_AudioSpec want = { 0 }, have;
+    SDL_AudioSpec want = {0}, have;
     want.freq = g_config.audio_freq;
     want.format = AUDIO_S16;
     want.channels = 2;
@@ -468,7 +602,7 @@ error_reading:;
   if (g_config.save_playthrough)
     MkDir("playthrough");
   MkDir("saves");
-    
+
   RtlReadSram();
 
   for (int i = 0; i < SDL_NumJoysticks(); i++)
@@ -477,158 +611,26 @@ error_reading:;
   if (g_config.autosave)
     HandleCommand(kKeys_Load + 0, true);
 
-  bool running = true;
-  uint32 lastTick = SDL_GetTicks();
-  uint32 curTick = 0;
-  uint32 frameCtr = 0;
-  uint8 audiopaused = true;
-  bool has_bug_in_title = false;
-  GamepadInfo *gi;
+  running = true;
+  lastTick = SDL_GetTicks();
+  curTick = 0;
+  frameCtr = 0;
+  audiopaused = true;
+  has_bug_in_title = false;
 
-  while (running) {
-    SDL_Event event;
-
-    while (SDL_PollEvent(&event)) {
-      switch (event.type) {
-      case SDL_CONTROLLERDEVICEADDED:
-        OpenOneGamepad(event.cdevice.which);
-        break;
-      case SDL_CONTROLLERDEVICEREMOVED:
-        gi = GetGamepadInfo(event.cdevice.which);
-        if (gi) {
-          memset(gi, 0, sizeof(GamepadInfo));
-          gi->joystick_id = -1;
-        }
-        break;
-      case SDL_CONTROLLERAXISMOTION:
-        gi = GetGamepadInfo(event.caxis.which);
-        if (gi)
-          HandleGamepadAxisInput(gi, event.caxis.axis, event.caxis.value);
-        break;
-      case SDL_CONTROLLERBUTTONDOWN:
-      case SDL_CONTROLLERBUTTONUP: {
-        gi = GetGamepadInfo(event.cbutton.which);
-        if (gi) {
-          int b = RemapSdlButton(event.cbutton.button);
-          if (b >= 0)
-            HandleGamepadInput(gi, b, event.type == SDL_CONTROLLERBUTTONDOWN);
-        }
-        break;
-      }
-      case SDL_MOUSEWHEEL:
-        if (SDL_GetModState() & KMOD_CTRL && event.wheel.y != 0)
-          ChangeWindowScale(event.wheel.y > 0 ? 1 : -1);
-        break;
-      case SDL_MOUSEBUTTONDOWN:
-        if (event.button.button == SDL_BUTTON_LEFT && event.button.state == SDL_PRESSED && event.button.clicks == 2) {
-          if ((g_win_flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0 && (g_win_flags & SDL_WINDOW_FULLSCREEN) == 0 && SDL_GetModState() & KMOD_SHIFT) {
-            g_win_flags ^= SDL_WINDOW_BORDERLESS;
-            SDL_SetWindowBordered(g_window, (g_win_flags & SDL_WINDOW_BORDERLESS) == 0 ? SDL_TRUE : SDL_FALSE);
-          }
-        }
-        break;
-      case SDL_KEYDOWN:
-        HandleInput(event.key.keysym.sym, event.key.keysym.mod, true);
-        break;
-      case SDL_KEYUP:
-        HandleInput(event.key.keysym.sym, event.key.keysym.mod, false);
-        break;
-      case SDL_QUIT:
-        running = false;
-        break;
-      }
-    }
-
-    if (g_paused != audiopaused) {
-      audiopaused = g_paused;
-      if (g_audio_device)
-        SDL_PauseAudioDevice(g_audio_device, audiopaused);
-    }
-
-    if (g_paused) {
-      SDL_Delay(16);
-      continue;
-    }
-
-    // Clear gamepad inputs when joypad directional inputs to avoid wonkiness
-    if (g_input_state & 0xf0)
-      g_gamepad[0].axis_buttons = 0;
-    if (g_input_state & 0xf0000)
-      g_gamepad[1].axis_buttons = 0;
-    uint32 inputs = g_input_state | g_gamepad[0].axis_buttons | g_gamepad[1].axis_buttons << 12;
-    uint8 is_replay = RtlRunFrame(inputs | GetActiveControllers());
-
-    frameCtr++;
-    g_snes->disableRender = (g_turbo ^ (is_replay & g_replay_turbo)) && (frameCtr & (g_turbo ? 0xf : 0x7f)) != 0;
-
-    if (!g_snes->disableRender)
-      DrawPpuFrameWithPerf();
-
-    bool want_bug_in_title = (g_got_mismatch_count != 0);
-    if (want_bug_in_title != has_bug_in_title) {
-      has_bug_in_title = want_bug_in_title;
-      char title[60];
-      if (want_bug_in_title) {
-        snprintf(title, sizeof(title), "%s | BUG FOUND!", kWindowTitle);
-        SDL_SetWindowTitle(g_window, title);
-      } else {
-        SDL_SetWindowTitle(g_window, kWindowTitle);
-      }
-    }
-
-    // if vsync isn't working, delay manually
-    curTick = SDL_GetTicks();
-
-    if (!g_snes->disableRender && !g_config.disable_frame_delay) {
-      static const uint8 delays[3] = { 17, 17, 16 }; // 60 fps
-      lastTick += delays[frameCtr % 3];
-
-      if (lastTick > curTick) {
-        uint32 delta = lastTick - curTick;
-        if (delta > 500) {
-          lastTick = curTick - 500;
-          delta = 500;
-        }
-        //        printf("Sleeping %d\n", delta);
-        SDL_Delay(delta);
-      } else if (curTick - lastTick > 500) {
-        lastTick = curTick;
-      }
-    }
-  }
-
-  if (g_config.autosave)
-    HandleCommand(kKeys_Save + 0, true);
-
-  // clean sdl
-  SDL_PauseAudioDevice(g_audio_device, 1);
-  SDL_CloseAudioDevice(g_audio_device);
-  SDL_DestroyMutex(g_audio_mutex);
-  free(g_audiobuffer);
-
-  g_renderer_funcs.Destroy();
-
-#ifdef __SWITCH__
-  SwitchImpl_Exit();
-#endif
-
-  SDL_DestroyWindow(window);
-  SDL_Quit();
+  EM_ASM({ console.log("Starting main loop"); });
+  emscripten_set_main_loop(main_loop, 0, 1);
+  cleanup();
   return 0;
 }
 
 static void RenderDigit(uint8 *dst, size_t pitch, int digit, uint32 color, bool big) {
   static const uint8 kFont[] = {
-    0x1c, 0x36, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x36, 0x1c,
-    0x18, 0x1c, 0x1e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e,
-    0x3e, 0x63, 0x60, 0x30, 0x18, 0x0c, 0x06, 0x03, 0x63, 0x7f,
-    0x3e, 0x63, 0x60, 0x60, 0x3c, 0x60, 0x60, 0x60, 0x63, 0x3e,
-    0x30, 0x38, 0x3c, 0x36, 0x33, 0x7f, 0x30, 0x30, 0x30, 0x78,
-    0x7f, 0x03, 0x03, 0x03, 0x3f, 0x60, 0x60, 0x60, 0x63, 0x3e,
-    0x1c, 0x06, 0x03, 0x03, 0x3f, 0x63, 0x63, 0x63, 0x63, 0x3e,
-    0x7f, 0x63, 0x60, 0x60, 0x30, 0x18, 0x0c, 0x0c, 0x0c, 0x0c,
-    0x3e, 0x63, 0x63, 0x63, 0x3e, 0x63, 0x63, 0x63, 0x63, 0x3e,
-    0x3e, 0x63, 0x63, 0x63, 0x7e, 0x60, 0x60, 0x60, 0x30, 0x1e,
+      0x1c, 0x36, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x36, 0x1c, 0x18, 0x1c, 0x1e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e,
+      0x3e, 0x63, 0x60, 0x30, 0x18, 0x0c, 0x06, 0x03, 0x63, 0x7f, 0x3e, 0x63, 0x60, 0x60, 0x3c, 0x60, 0x60, 0x60, 0x63, 0x3e,
+      0x30, 0x38, 0x3c, 0x36, 0x33, 0x7f, 0x30, 0x30, 0x30, 0x78, 0x7f, 0x03, 0x03, 0x03, 0x3f, 0x60, 0x60, 0x60, 0x63, 0x3e,
+      0x1c, 0x06, 0x03, 0x03, 0x3f, 0x63, 0x63, 0x63, 0x63, 0x3e, 0x7f, 0x63, 0x60, 0x60, 0x30, 0x18, 0x0c, 0x0c, 0x0c, 0x0c,
+      0x3e, 0x63, 0x63, 0x63, 0x3e, 0x63, 0x63, 0x63, 0x63, 0x3e, 0x3e, 0x63, 0x63, 0x63, 0x7e, 0x60, 0x60, 0x60, 0x30, 0x1e,
   };
   const uint8 *p = kFont + digit * 10;
   if (!big) {
@@ -652,7 +654,6 @@ static void RenderDigit(uint8 *dst, size_t pitch, int digit, uint32 color, bool 
   }
 }
 
-
 static void RenderNumber(uint8 *dst, size_t pitch, int n, uint8 big) {
   char buf[32], *s;
   int i;
@@ -664,7 +665,7 @@ static void RenderNumber(uint8 *dst, size_t pitch, int n, uint8 big) {
 }
 
 static void HandleCommand(uint32 j, bool pressed) {
-  static const uint8 kKbdRemap[] = { 4, 5, 6, 7, 2, 3, 8, 0, 9, 1, 10, 11 };
+  static const uint8 kKbdRemap[] = {4, 5, 6, 7, 2, 3, 8, 0, 9, 1, 10, 11};
   if (j < kKeys_Controls)
     return;
 
@@ -713,9 +714,7 @@ static void HandleCommand(uint32 j, bool pressed) {
       g_cursor = !g_cursor;
       SDL_ShowCursor(g_cursor);
       break;
-    case kKeys_Reset:
-      RtlReset(1);
-      break;
+    case kKeys_Reset: RtlReset(1); break;
     case kKeys_Pause: g_paused = !g_paused; break;
     case kKeys_PauseDimmed:
       g_paused = !g_paused;
@@ -735,7 +734,7 @@ static void HandleCommand(uint32 j, bool pressed) {
     case kKeys_WindowSmaller: ChangeWindowScale(-1); break;
     case kKeys_DisplayPerf: g_display_perf ^= 1; break;
     case kKeys_ToggleRenderer:
-      g_ppu_render_flags ^= kPpuRenderFlags_NewRenderer; 
+      g_ppu_render_flags ^= kPpuRenderFlags_NewRenderer;
       printf("New renderer = %x\n", g_ppu_render_flags & kPpuRenderFlags_NewRenderer);
       g_new_ppu = (g_ppu_render_flags & kPpuRenderFlags_NewRenderer) != 0;
       break;
@@ -771,7 +770,7 @@ static void OpenOneGamepad(int i) {
     if (GetGamepadInfo(joystick_id))
       return;
 
-    uint8 scan_order[3] = { SDL_GameControllerGetPlayerIndex(controller), 0, 1 };
+    uint8 scan_order[3] = {SDL_GameControllerGetPlayerIndex(controller), 0, 1};
 
     int found_idx = -1;
     for (int i = 0; i < 3; i++) {
@@ -848,7 +847,8 @@ static float ApproximateAtan2(float y, float x) {
   float q = (float)((~ux_s & uy_s) >> 29 | ux_s >> 30);
   // Calculate the arctangent in the first quadrant
   float bxy_a = b * x * y;
-  if (bxy_a < 0.0f) bxy_a = -bxy_a;  // avoid fabs
+  if (bxy_a < 0.0f)
+    bxy_a = -bxy_a;  // avoid fabs
   float num = bxy_a + y * y;
   float atan_1q = num / (x * x + bxy_a + num + 0.000001f);
   // Translate it to the proper quadrant
@@ -865,14 +865,14 @@ static void HandleGamepadAxisInput(GamepadInfo *gi, int axis, Sint16 value) {
       // segments rotated by 22.5 degrees that control which direction to move.
       // todo: do this without floats?
       static const uint8 kSegmentToButtons[8] = {
-        1 << 4,           // 0 = up
-        1 << 4 | 1 << 7,  // 1 = up, right
-        1 << 7,           // 2 = right
-        1 << 7 | 1 << 5,  // 3 = right, down
-        1 << 5,           // 4 = down
-        1 << 5 | 1 << 6,  // 5 = down, left
-        1 << 6,           // 6 = left
-        1 << 6 | 1 << 4,  // 7 = left, up
+          1 << 4,           // 0 = up
+          1 << 4 | 1 << 7,  // 1 = up, right
+          1 << 7,           // 2 = right
+          1 << 7 | 1 << 5,  // 3 = right, down
+          1 << 5,           // 4 = down
+          1 << 5 | 1 << 6,  // 5 = down, left
+          1 << 6,           // 6 = left
+          1 << 6 | 1 << 4,  // 7 = left, up
       };
       uint8 angle = (uint8)(int)(ApproximateAtan2(gi->last_axis_y, gi->last_axis_x) * 64.0f + 0.5f);
       buttons = kSegmentToButtons[(uint8)(angle + 16 + 64) >> 5];
@@ -888,18 +888,13 @@ const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
 
 static bool VerifyAssetsFile(const uint8 *data, size_t length) {
-  static const char kAssetsSig[] = { kAssets_Sig };
-  if (length < 16 + 32 + 32 + 8 + kNumberOfAssets * 4 ||
-    memcmp(data, kAssetsSig, 48) != 0 ||
-    *(uint32 *)(data + 80) != kNumberOfAssets)
+  static const char kAssetsSig[] = {kAssets_Sig};
+  if (length < 16 + 32 + 32 + 8 + kNumberOfAssets * 4 || memcmp(data, kAssetsSig, 48) != 0 || *(uint32 *)(data + 80) != kNumberOfAssets)
     return false;
   return true;
 }
 
-static const char *kAssetFileCandidates[] = {
-  "smw_assets.dat",
-  "assets/smw_assets.dat"
-};
+static const char *kAssetFileCandidates[] = {"smw_assets.dat", "assets/smw_assets.dat"};
 
 static void LoadAssets() {
   size_t length = 0;
@@ -914,7 +909,7 @@ static void LoadAssets() {
     bps = ReadWholeFile("smw_assets.bps", &bps_length);
     if (!bps)
       Die("Failed to read smw_assets.dat. Please see the README for information about how you get this file.");
-    
+
     bps_src = ReadWholeFile("smw.sfc", &bps_src_length);
     if (!bps_src)
       Die("Missing file: smw.sfc");
@@ -928,7 +923,7 @@ static void LoadAssets() {
 
   if (!VerifyAssetsFile(data, length))
     Die("Mismatching assets file - Please re run 'python assets/restool.py'");
-    
+
   uint32 offset = 88 + kNumberOfAssets * 4 + *(uint32 *)(data + 84);
 
   for (size_t i = 0; i < kNumberOfAssets; i++) {
@@ -943,7 +938,7 @@ static void LoadAssets() {
 }
 
 MemBlk FindInAssetArray(int asset, int idx) {
-  return FindIndexInMemblk((MemBlk) { g_asset_ptrs[asset], g_asset_sizes[asset] }, idx);
+  return FindIndexInMemblk((MemBlk){g_asset_ptrs[asset], g_asset_sizes[asset]}, idx);
 }
 
 const uint8 *FindPtrInAsset(int asset, uint32 addr) {

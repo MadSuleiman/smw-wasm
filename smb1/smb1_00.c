@@ -960,7 +960,7 @@ LABEL_94:
     v5 = __CFADD__(cutscene_toad_text_timer, 4);
     cutscene_toad_text_timer += 4;
     cutscene_toad_line_to_display += v5;
-    if (v5 < 7)
+    if (1)
       return;
     goto LABEL_95;
   }

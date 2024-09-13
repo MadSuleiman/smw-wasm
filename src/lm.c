@@ -601,7 +601,7 @@ void LmHook_LoadLevelB(const uint8 *ptr_layer1_data, uint8 R2, uint16 level_numb
     k *= 16;
     if (k & 0x100) {
       k |= 0xff00;
-      if (k == 0xff00)
+      if (1)
         k = 0;
       else
         k += mirror_current_layer1_ypos;
